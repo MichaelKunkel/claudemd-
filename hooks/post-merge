@@ -27,6 +27,9 @@ Apply these changes to CLAUDE.md and .claude/agents/* in this project, re-adapte
 # Don't let git's hook environment point claude's git commands at this repo.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
 
+stage=
+trap '[ -n "$stage" ] && rm -rf "$stage"' EXIT
+
 while IFS= read -r proj || [ -n "$proj" ]; do
   [ -z "$proj" ] && continue
   if [ ! -d "$proj" ]; then
@@ -34,13 +37,33 @@ while IFS= read -r proj || [ -n "$proj" ]; do
     continue
   fi
   echo "post-merge: updating $(basename "$proj") ($proj)"
+  # Claude Code won't auto-edit files under .claude/, so Claude edits a staged
+  # copy of the agent files and we copy back what changed.
+  stage=$(mktemp -d) || { echo "post-merge: WARNING: mktemp failed; skipping $proj" >&2; continue; }
+  mkdir -p "$stage/agents"
+  if [ -d "$proj/.claude/agents" ] && ! cp -a "$proj/.claude/agents/." "$stage/agents/"; then
+    echo "post-merge: WARNING: staging agent files failed; skipping $proj" >&2
+    rm -rf "$stage"; stage=
+    continue
+  fi
+  note="Note: the agent files are staged at $stage/agents/ (a copy of .claude/agents/). Edit them there, not in .claude/agents/; they are copied back afterwards."
   # Timeout so a stuck run can't hang the pull; stdin closed so it can't wait for input.
-  if reply=$(cd "$proj" && timeout 900 "$CLAUDE" -p "$PROMPT" --permission-mode acceptEdits </dev/null 2>&1); then
+  if reply=$(cd "$proj" && timeout 900 "$CLAUDE" -p "$PROMPT
+$note" --permission-mode acceptEdits --add-dir "$stage" </dev/null 2>&1); then
+    for f in "$stage"/agents/*; do
+      [ -f "$f" ] || continue
+      dest="$proj/.claude/agents/$(basename "$f")"
+      cmp -s "$f" "$dest" && continue
+      # Copy to a temp name and rename, so a failed copy can't truncate the original.
+      mkdir -p "$proj/.claude/agents" && cp "$f" "$dest.tmp" && mv "$dest.tmp" "$dest" \
+        || { echo "post-merge: WARNING: could not update $dest" >&2; rm -f "$dest.tmp"; }
+    done
     echo "$reply"
   else
-    echo "post-merge: WARNING: claude failed for $proj:" >&2
+    echo "post-merge: WARNING: claude failed for $proj; agent files left unchanged:" >&2
     echo "$reply" | tail -5 >&2
   fi
+  rm -rf "$stage"; stage=
 done < "$PROJECTS"
 
 exit 0
