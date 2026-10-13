@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Re-adapt team workflow files in each registered project after a git pull.
+# Never fails: a broken update must not break git pull.
+#
+# Install once per machine (git does not copy hooks on clone):
+#   ln -sf ../../hooks/post-merge ~/.claude-team/claudemd-/.git/hooks/post-merge
+# List project folders, one absolute path per line, in ~/.claude-team/projects.txt.
+
+# Only the files that get copied into projects; changes to this hook alone
+# don't need a project update.
+DIFF=$(git diff ORIG_HEAD HEAD -- CLAUDE.md agents/ 2>/dev/null)
+[ -z "$DIFF" ] && exit 0
+
+CLAUDE="$HOME/.local/bin/claude"
+PROJECTS="$HOME/.claude-team/projects.txt"
+[ -f "$PROJECTS" ] || exit 0
+
+if [ ! -x "$CLAUDE" ]; then
+  echo "post-merge: WARNING: $CLAUDE not found; projects not updated" >&2
+  exit 0
+fi
+
+PROMPT="The team workflow repo was updated. Here is the diff:
+$DIFF
+Apply these changes to CLAUDE.md and .claude/agents/* in this project, re-adapted for this machine using .claude/machine.md exactly as before. Keep all machine-specific edits. Change nothing else. Reply with 3 lines: what changed."
+
+# Don't let git's hook environment point claude's git commands at this repo.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+
+while IFS= read -r proj || [ -n "$proj" ]; do
+  [ -z "$proj" ] && continue
+  if [ ! -d "$proj" ]; then
+    echo "post-merge: skipping $proj (missing)"
+    continue
+  fi
+  echo "post-merge: updating $(basename "$proj") ($proj)"
+  # Timeout so a stuck run can't hang the pull; stdin closed so it can't wait for input.
+  if reply=$(cd "$proj" && timeout 900 "$CLAUDE" -p "$PROMPT" --permission-mode acceptEdits </dev/null 2>&1); then
+    echo "$reply"
+  else
+    echo "post-merge: WARNING: claude failed for $proj:" >&2
+    echo "$reply" | tail -5 >&2
+  fi
+done < "$PROJECTS"
+
+exit 0

@@ -49,7 +49,7 @@ Use Bash only for static, side-effect-free checks: `gcc -fsyntax-only`,
 `python3 -m py_compile`, linters, `grep`, `diff`. Write any temp output to
 `/tmp`, never into the project.
 NEVER run project binaries or scripts, `make install`, or anything that
-could talk to the drone, payload, gimbal, lidar, or network.
+could talk to the drone, payload, gimbal, lidar, robots, or network.
 
 ## Report format
 Only report issues you can back with a concrete scenario. No style nits

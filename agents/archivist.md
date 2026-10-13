@@ -47,8 +47,9 @@ Don't paste code into the index.
   `pictures/`, `sessions/`, `lidar/`, or `__pycache__/`. They hold thousands of
   images and point clouds. Only list them if the question is specifically
   about data layout, and even then use `ls | head`.
-- Skip build outputs, `.git/`, and vendored third-party libraries unless
-  the question is about them.
+- Skip build outputs (`build/`, `install/`, `log/`), `node_modules/`, Python
+  virtualenvs (`venv/`, `.venv/`), `.git/`, and vendored third-party libraries
+  unless the question is about them.
 
 ## Answer format
 Short, no file dumps:
